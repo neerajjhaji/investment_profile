@@ -73,6 +73,33 @@ full key / code / parameter reference.
 The app runs **without** a key — you just won't get the AI insights panel; it
 shows a clear, actionable error instead of crashing.
 
+## Configuration
+
+All configuration lives in a git-ignored `.env` file. Only `GEMINI_API_KEY` is
+required; everything else has a sensible default.
+
+```dotenv
+# .env  — required
+GEMINI_API_KEY=AIza...your-real-key...
+
+# optional — model fallback chain, tried left→right (first success wins)
+GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-pro
+
+# optional — generation temperature (0.0 deterministic … 1.0 creative)
+GEMINI_TEMPERATURE=0.4
+```
+
+| Variable | Required | Default | Purpose |
+|----------|:--------:|---------|---------|
+| `GEMINI_API_KEY` | ✅ | — | Your Gemini key. Loaded via `python-dotenv`; never in code. |
+| `GEMINI_MODELS` | ➖ | `gemini-2.5-flash,gemini-2.5-pro` | Ordered fallback chain. Add newer model ids here — no code change. |
+| `GEMINI_PRIMARY_MODEL` / `GEMINI_FALLBACK_MODEL` | ➖ | `gemini-2.5-flash` / `gemini-2.5-pro` | Alternative to `GEMINI_MODELS` (a simple pair). |
+| `GEMINI_TEMPERATURE` | ➖ | `0.4` | Sampling temperature. |
+
+> Verify available model ids for your key at
+> <https://ai.google.dev/gemini-api/docs/models>. Full details in
+> **[GUIDE.md](GUIDE.md)**.
+
 ## Run
 
 ### Streamlit dashboard (primary)
