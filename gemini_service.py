@@ -3,11 +3,15 @@ gemini_service.py
 =================
 Thin wrapper around the official Google Gemini SDK (`google-genai`).
 
+Configuration is read ENTIRELY from the environment (loaded from a local
+`.env` file via python-dotenv). No API key or model id is ever hard-coded in
+source. See `.env.example` for every supported variable.
+
 Responsibilities
 ----------------
-* Load and validate the GEMINI_API_KEY, failing loudly and clearly if absent.
+* Load `.env` and read the GEMINI_API_KEY, failing loudly if absent.
 * Enforce the ArthaLab educational system prompt on every call.
-* Use `gemini-2.5-flash` with an automatic fallback to `gemini-2.5-pro`.
+* Try an ordered chain of models (primary -> fallbacks) from the environment.
 * Never fabricate returns; the model is instructed to frame everything as a
   user-configured hypothetical, not advice.
 
@@ -21,12 +25,60 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-# The SDK is imported lazily inside the client so the rest of the app (and the
-# math engine / tests) can run even if `google-genai` is not installed.
+# Load .env into the process environment as early as possible. python-dotenv
+# is optional: if it is not installed we silently fall back to whatever is
+# already exported in the shell.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:  # pragma: no cover - env dependent
+    pass
 
 
-PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.5-pro"
+# ---------------------------------------------------------------------------
+# Environment-driven configuration
+# ---------------------------------------------------------------------------
+
+# Sensible, verified defaults. Override any of these in `.env` WITHOUT touching
+# code. If your Google account exposes newer model ids (e.g. a gemini-3.x
+# family), just set GEMINI_MODELS in `.env` — no code change required.
+DEFAULT_PRIMARY_MODEL = "gemini-2.5-flash"
+DEFAULT_FALLBACK_MODEL = "gemini-2.5-pro"
+DEFAULT_TEMPERATURE = 0.4
+
+
+def _model_chain() -> list[str]:
+    """
+    Resolve the ordered list of models to try.
+
+    Priority:
+      1. GEMINI_MODELS = comma-separated list (highest priority, full control).
+      2. GEMINI_PRIMARY_MODEL + GEMINI_FALLBACK_MODEL (pair).
+      3. Built-in verified defaults.
+    Duplicates and blanks are removed while preserving order.
+    """
+    raw = os.environ.get("GEMINI_MODELS", "").strip()
+    if raw:
+        models = [m.strip() for m in raw.split(",") if m.strip()]
+    else:
+        models = [
+            os.environ.get("GEMINI_PRIMARY_MODEL", DEFAULT_PRIMARY_MODEL).strip(),
+            os.environ.get("GEMINI_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL).strip(),
+        ]
+    seen, ordered = set(), []
+    for m in models:
+        if m and m not in seen:
+            seen.add(m)
+            ordered.append(m)
+    return ordered or [DEFAULT_PRIMARY_MODEL]
+
+
+def _temperature() -> float:
+    try:
+        return float(os.environ.get("GEMINI_TEMPERATURE", DEFAULT_TEMPERATURE))
+    except ValueError:
+        return DEFAULT_TEMPERATURE
+
 
 SYSTEM_PROMPT = (
     "You are ArthaLab AI, an educational financial knowledge engine for "
@@ -47,24 +99,25 @@ class GeminiConfigError(RuntimeError):
 
 
 class GeminiCallError(RuntimeError):
-    """Raised when both primary and fallback model calls fail."""
+    """Raised when every model in the chain fails."""
 
 
 @dataclass
 class GeminiResponse:
     text: str
     model_used: str
-    fell_back: bool
+    fell_back: bool          # True if a non-primary model produced the answer
 
 
 def _require_api_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise GeminiConfigError(
-            "GEMINI_API_KEY is not set. Export it before launching:\n"
-            "  export GEMINI_API_KEY='your-key'      # macOS/Linux\n"
-            "  setx GEMINI_API_KEY \"your-key\"          # Windows (new shell)\n"
-            "Get a key from https://aistudio.google.com/apikey ."
+            "GEMINI_API_KEY is not set.\n"
+            "Create a `.env` file next to app.py (copy `.env.example`) with:\n"
+            "  GEMINI_API_KEY=your-key-here\n"
+            "…or export it in your shell. Get a key at "
+            "https://aistudio.google.com/apikey ."
         )
     return key
 
@@ -73,20 +126,28 @@ class GeminiService:
     """
     Lazily-initialised Gemini client. Construct once and reuse.
 
+    All configuration (key, models, temperature) is read from the environment
+    at construction time. Pass overrides only for testing.
+
     Usage
     -----
     >>> svc = GeminiService()          # raises GeminiConfigError if unusable
     >>> resp = svc.explain_scenario(scenario_summary)
-    >>> print(resp.text)
+    >>> print(resp.text, "via", resp.model_used)
     """
 
     def __init__(self, api_key: Optional[str] = None,
-                 primary_model: str = PRIMARY_MODEL,
-                 fallback_model: str = FALLBACK_MODEL):
+                 models: Optional[list[str]] = None,
+                 temperature: Optional[float] = None):
         self._api_key = api_key or _require_api_key()
-        self._primary = primary_model
-        self._fallback = fallback_model
+        self._models = models or _model_chain()
+        self._temperature = temperature if temperature is not None else _temperature()
         self._client = self._make_client()
+
+    @property
+    def models(self) -> list[str]:
+        """The ordered model chain this service will try."""
+        return list(self._models)
 
     def _make_client(self):
         try:
@@ -105,8 +166,8 @@ class GeminiService:
 
     # -- internal single-model call -------------------------------------
 
-    def _generate(self, model: str, user_prompt: str,
-                  temperature: float) -> str:
+    def _generate_one(self, model: str, user_prompt: str,
+                      temperature: float) -> str:
         from google.genai import types
 
         config = types.GenerateContentConfig(
@@ -126,32 +187,29 @@ class GeminiService:
     # -- public API ------------------------------------------------------
 
     def generate(self, user_prompt: str,
-                 temperature: float = 0.4) -> GeminiResponse:
+                 temperature: Optional[float] = None) -> GeminiResponse:
         """
-        Call the primary model, falling back to the secondary on any error.
-        Raises GeminiCallError only if both fail.
+        Try each model in the chain in order; return the first success.
+        Raises GeminiCallError only if every model fails.
         """
-        try:
-            text = self._generate(self._primary, user_prompt, temperature)
-            return GeminiResponse(text=text, model_used=self._primary,
-                                  fell_back=False)
-        except Exception as primary_exc:  # noqa: BLE001 - want broad fallback
+        temp = temperature if temperature is not None else self._temperature
+        errors = []
+        for idx, model in enumerate(self._models):
             try:
-                text = self._generate(self._fallback, user_prompt, temperature)
-                return GeminiResponse(text=text, model_used=self._fallback,
-                                      fell_back=True)
-            except Exception as fallback_exc:  # noqa: BLE001
-                raise GeminiCallError(
-                    f"Both models failed. Primary ({self._primary}): "
-                    f"{primary_exc}. Fallback ({self._fallback}): "
-                    f"{fallback_exc}."
-                ) from fallback_exc
+                text = self._generate_one(model, user_prompt, temp)
+                return GeminiResponse(text=text, model_used=model,
+                                      fell_back=(idx > 0))
+            except Exception as exc:  # noqa: BLE001 - want to try the next model
+                errors.append(f"{model}: {exc}")
+        raise GeminiCallError(
+            "All models in the chain failed. " + " | ".join(errors)
+        )
 
     def explain_scenario(self, scenario_summary: str) -> GeminiResponse:
         """
         Ask the model to explain the mechanics/tax/risk of a user-built
-        scenario. `scenario_summary` should be a plain-text dump of the
-        numbers the math engine produced.
+        scenario. `scenario_summary` is a plain-text dump of the numbers the
+        math engine produced.
         """
         prompt = (
             "A user has configured the following HYPOTHETICAL scenario in an "

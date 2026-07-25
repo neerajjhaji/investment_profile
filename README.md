@@ -39,9 +39,11 @@ ArthaLab does the arithmetic, separates *guaranteed fixed-income yields* from
 |------|---------|
 | `app.py` | Streamlit dashboard (inputs, KPI cards, Plotly charts, AI panel). |
 | `math_engine.py` | Pure-Python financial math, tax logic, SWP stress-testing, Monte Carlo. No I/O, fully testable. |
-| `gemini_service.py` | `google-genai` integration — `gemini-2.5-flash` with fallback to `gemini-2.5-pro`. |
+| `gemini_service.py` | `google-genai` integration — key + model chain read from `.env`; env-configurable models (default `gemini-2.5-flash` → `gemini-2.5-pro`). |
 | `api.py` | *Optional* FastAPI backend exposing the same models as JSON. |
 | `test_math_engine.py` | Pytest suite locking in the arithmetic and statutory rules. |
+| `.env.example` | Template for the `.env` config file (copy to `.env`). |
+| `GUIDE.md` | Complete key / code / parameter reference. |
 | `requirements.txt` | Dependencies. |
 
 ## Setup
@@ -57,12 +59,16 @@ source .venv/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Set your Gemini API key (get one at https://aistudio.google.com/apikey)
-#    macOS/Linux:
-export GEMINI_API_KEY="your-key-here"
-#    Windows (PowerShell, new session after setx):
-setx GEMINI_API_KEY "your-key-here"
+# 3. Configure your Gemini API key via a .env file (NEVER put keys in code)
+cp .env.example .env          # Windows: copy .env.example .env
+#    then edit .env and set:  GEMINI_API_KEY=your-key-here
+#    get a key at https://aistudio.google.com/apikey
 ```
+
+The key is loaded from `.env` at startup (via `python-dotenv`) and is never
+hard-coded or committed — `.env` is git-ignored. To switch models, set
+`GEMINI_MODELS` in `.env` (no code change). See **[GUIDE.md](GUIDE.md)** for the
+full key / code / parameter reference.
 
 The app runs **without** a key — you just won't get the AI insights panel; it
 shows a clear, actionable error instead of crashing.

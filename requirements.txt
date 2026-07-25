@@ -1,5 +1,6 @@
 # ArthaLab dependencies
 google-genai>=0.3.0        # Official Google Gemini SDK
+python-dotenv>=1.0.0       # Loads GEMINI_API_KEY from a local .env file
 streamlit>=1.36.0          # Frontend dashboard
 pandas>=2.0.0              # Tabular data for tables/charts
 plotly>=5.20.0             # Interactive charts (donut, waterfall, MC)
