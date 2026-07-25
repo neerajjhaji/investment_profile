@@ -1,5 +1,9 @@
 # ArthaLab — Investment Strategy & Portfolio Simulator
 
+[![tests](https://github.com/neerajjhaji/investment_profile/actions/workflows/tests.yml/badge.svg)](https://github.com/neerajjhaji/investment_profile/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+
 An **educational, interactive mathematical modelling tool** for the Indian
 financial ecosystem. You configure a hypothetical corpus and allocation;
 ArthaLab does the arithmetic, separates *guaranteed fixed-income yields* from
@@ -153,3 +157,8 @@ pytest -q
 - Monte Carlo uses lognormal monthly returns; real markets have fat tails,
   autocorrelation, and regime changes this model does not capture. Treat the
   distribution as a *teaching aid*, not a forecast.
+
+## License
+
+Released under the [MIT License](LICENSE). Note the additional educational-use
+notice in the LICENSE file — ArthaLab is not investment advice.

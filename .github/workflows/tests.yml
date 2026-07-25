@@ -1,0 +1,36 @@
+name: tests
+
+# Runs the deterministic math-engine test suite on every push and PR.
+# No secrets required — the math engine has no I/O and needs no API key.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.11", "3.12" ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test dependencies
+        # The suite only exercises math_engine.py, which depends on numpy.
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pytest
+
+      - name: Run tests
+        run: pytest -q
