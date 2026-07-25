@@ -71,8 +71,11 @@ cp .env.example .env          # Windows: copy .env.example .env
 
 The key is loaded from `.env` at startup (via `python-dotenv`) and is never
 hard-coded or committed — `.env` is git-ignored. To switch models, set
-`GEMINI_MODELS` in `.env` (no code change). See **[GUIDE.md](GUIDE.md)** for the
-full key / code / parameter reference.
+`GEMINI_MODELS` in `.env` (no code change).
+
+📚 **Documentation:** **[GUIDE.md](GUIDE.md)** — key / code / parameter reference ·
+**[APPLICATION_DOCUMENTATION.md](APPLICATION_DOCUMENTATION.md)** — complete user +
+developer manual with runnable code examples.
 
 The app runs **without** a key — you just won't get the AI insights panel; it
 shows a clear, actionable error instead of crashing.
