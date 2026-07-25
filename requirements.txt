@@ -1,0 +1,14 @@
+# ArthaLab dependencies
+google-genai>=0.3.0        # Official Google Gemini SDK
+streamlit>=1.36.0          # Frontend dashboard
+pandas>=2.0.0              # Tabular data for tables/charts
+plotly>=5.20.0             # Interactive charts (donut, waterfall, MC)
+numpy>=1.24.0              # Monte Carlo vectorisation
+
+# Optional FastAPI backend (api.py). Uncomment if you run the JSON API.
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0
+
+# Testing
+pytest>=8.0.0
